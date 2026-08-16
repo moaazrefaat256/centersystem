@@ -1536,40 +1536,24 @@ function toggleStudentScanner() {
 }
 
 function startStudentScanner() {
-  const btn = document.getElementById('student-scanner-toggle-btn');
-  studentHtml5QrCode = new Html5Qrcode("student-scanner-view", {
-    formatsToSupport: [
-      Html5QrcodeSupportedFormats.CODE_128,
-      Html5QrcodeSupportedFormats.CODE_39,
-      Html5QrcodeSupportedFormats.EAN_13,
-      Html5QrcodeSupportedFormats.QR_CODE
-    ],
-    verbose: false
-  });
-  studentHtml5QrCode.start(
-    { facingMode: "environment" },
-    { fps: 10, qrbox: { width: 280, height: 140 } },
-    (decodedText) => {
-      processStudentScanCode(decodedText.trim());
-    },
-    () => {}
-  ).then(() => {
-    studentScannerRunning = true;
-    btn.textContent = '⏹️ إيقاف الكاميرا';
-  }).catch(err => {
-    showToast('تعذر تشغيل الكاميرا. تأكد من السماح بالوصول للكاميرا أو استخدم الإدخال اليدوي.', 'error');
+  startBarcodeScanner({
+    viewId: 'student-scanner-view',
+    btnId: 'student-scanner-toggle-btn',
+    onDecode: (code) => processStudentScanCode(code),
+    setInstance: (inst) => { studentHtml5QrCode = inst; },
+    getInstance: () => studentHtml5QrCode,
+    setRunning: (v) => { studentScannerRunning = v; },
+    getRunning: () => studentScannerRunning
   });
 }
 
 function stopStudentScannerIfRunning() {
-  if (studentHtml5QrCode && studentScannerRunning) {
-    studentHtml5QrCode.stop().then(() => {
-      studentHtml5QrCode.clear();
-      studentScannerRunning = false;
-      const btn = document.getElementById('student-scanner-toggle-btn');
-      if (btn) btn.textContent = '📷 تشغيل الكاميرا';
-    }).catch(() => {});
-  }
+  stopBarcodeScanner({
+    getInstance: () => studentHtml5QrCode,
+    getRunning: () => studentScannerRunning,
+    setRunning: (v) => { studentScannerRunning = v; },
+    btnId: 'student-scanner-toggle-btn'
+  });
 }
 
 // ============================================================
@@ -2067,8 +2051,53 @@ function toggleScanner() {
 }
 
 function startScanner() {
-  const btn = document.getElementById('scanner-toggle-btn');
-  html5QrCode = new Html5Qrcode("scanner-view", {
+  startBarcodeScanner({
+    viewId: 'scanner-view',
+    btnId: 'scanner-toggle-btn',
+    onDecode: (code) => processScannedCode(code),
+    setInstance: (inst) => { html5QrCode = inst; },
+    getInstance: () => html5QrCode,
+    setRunning: (v) => { scannerRunning = v; },
+    getRunning: () => scannerRunning
+  });
+}
+
+function stopScannerIfRunning() {
+  stopBarcodeScanner({
+    getInstance: () => html5QrCode,
+    getRunning: () => scannerRunning,
+    setRunning: (v) => { scannerRunning = v; },
+    btnId: 'scanner-toggle-btn'
+  });
+}
+
+// ============================================================
+//  SHARED CAMERA SCANNER ENGINE
+//  Works across devices: enumerates cameras and prefers the back/rear one,
+//  falls back through several constraint strategies, and gives clear
+//  diagnostics for the common failure causes (insecure origin, no camera,
+//  permission denied, camera busy) instead of a single generic error.
+// ============================================================
+async function startBarcodeScanner({ viewId, btnId, onDecode, setInstance, getInstance, setRunning, getRunning }) {
+  const btn = document.getElementById(btnId);
+
+  if (!window.isSecureContext) {
+    showToast('الكاميرا محتاجة اتصال آمن (HTTPS). لو فتحت الملف مباشرة على الموبايل الكاميرا مش هتشتغل — لازم ترفع الصفحة على استضافة بـ HTTPS (زي Firebase Hosting). استخدم الإدخال اليدوي لحد ما يتم ذلك.', 'error');
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showToast('المتصفح ده مش بيدعم الوصول للكاميرا. جرّب متصفح تاني (Chrome/Safari محدّث) أو استخدم الإدخال اليدوي.', 'error');
+    return;
+  }
+
+  // Stop and clear any previous instance for this view before starting a new one.
+  const prev = getInstance();
+  if (prev) {
+    try { await prev.stop(); } catch (e) {}
+    try { prev.clear(); } catch (e) {}
+  }
+
+  const instance = new Html5Qrcode(viewId, {
     formatsToSupport: [
       Html5QrcodeSupportedFormats.CODE_128,
       Html5QrcodeSupportedFormats.CODE_39,
@@ -2077,27 +2106,59 @@ function startScanner() {
     ],
     verbose: false
   });
-  html5QrCode.start(
-    { facingMode: "environment" },
-    { fps: 10, qrbox: { width: 280, height: 140 } },
-    (decodedText) => {
-      processScannedCode(decodedText.trim());
-    },
-    () => {}
-  ).then(() => {
-    scannerRunning = true;
-    btn.textContent = '⏹️ إيقاف الكاميرا';
-  }).catch(err => {
-    showToast('تعذر تشغيل الكاميرا. تأكد من السماح بالوصول للكاميرا أو استخدم الإدخال اليدوي.', 'error');
-  });
+  setInstance(instance);
+
+  const scanConfig = { fps: 10, qrbox: { width: 280, height: 140 } };
+  const onSuccess = (decodedText) => onDecode(decodedText.trim());
+  const onScanError = () => {};
+
+  // Build an ordered list of camera choices, most specific (real rear camera by id) to most generic.
+  const choices = [];
+  try {
+    const cameras = await Html5Qrcode.getCameras();
+    if (cameras && cameras.length) {
+      const back = cameras.find(c => /back|rear|environment/i.test(c.label || ''));
+      if (back) choices.push(back.id);
+      // Android devices commonly list the rear camera last; try it before the rest.
+      const last = cameras[cameras.length - 1];
+      if (!choices.includes(last.id)) choices.push(last.id);
+      cameras.forEach(c => { if (!choices.includes(c.id)) choices.push(c.id); });
+    }
+  } catch (e) {
+    // getCameras() can fail before permission is granted on some browsers — the constraint
+    // fallbacks below will still trigger the permission prompt and work in that case.
+  }
+  choices.push({ facingMode: { ideal: "environment" } });
+  choices.push({ facingMode: "user" });
+
+  let lastError = null;
+  for (const choice of choices) {
+    try {
+      await instance.start(choice, scanConfig, onSuccess, onScanError);
+      setRunning(true);
+      if (btn) btn.textContent = '⏹️ إيقاف الكاميرا';
+      return;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  setRunning(false);
+  const msg = String(lastError && (lastError.message || lastError)) || '';
+  let hint = 'تعذر تشغيل الكاميرا على هذا الجهاز. استخدم الإدخال اليدوي.';
+  if (/NotAllowedError|Permission/i.test(msg)) hint = 'تم رفض إذن الكاميرا. افتح إعدادات المتصفح واسمح بالوصول للكاميرا لهذا الموقع، ثم أعد المحاولة.';
+  else if (/NotFoundError|no camera/i.test(msg)) hint = 'لا توجد كاميرا متاحة على هذا الجهاز. استخدم الإدخال اليدوي.';
+  else if (/NotReadableError|in use/i.test(msg)) hint = 'الكاميرا مستخدمة في تطبيق آخر حاليًا. أغلقه وأعد المحاولة، أو استخدم الإدخال اليدوي.';
+  showToast(hint, 'error');
 }
 
-function stopScannerIfRunning() {
-  if (html5QrCode && scannerRunning) {
-    html5QrCode.stop().then(() => {
-      html5QrCode.clear();
-      scannerRunning = false;
-      const btn = document.getElementById('scanner-toggle-btn');
+function stopBarcodeScanner({ getInstance, getRunning, setRunning, btnId }) {
+  const instance = getInstance();
+  if (instance && getRunning()) {
+    instance.stop().then(() => {
+      instance.clear();
+      setRunning(false);
+      const btn = document.getElementById(btnId);
       if (btn) btn.textContent = '📷 تشغيل الكاميرا';
     }).catch(() => {});
   }
@@ -2203,6 +2264,9 @@ function saveCenterName() {
 window.addEventListener('DOMContentLoaded', () => {
   seedDefaultStagesIfEmpty();
   initFirebase();
+  if (!window.isSecureContext) {
+    setTimeout(() => showToast('تنبيه: الكاميرا لن تعمل لأن الصفحة مفتوحة بدون HTTPS (مثلًا كملف محلي). ارفع الملف على استضافة مثل Firebase Hosting ليعمل الماسح الضوئي على أي جهاز. الإدخال اليدوي يعمل دائمًا.', 'error'), 1200);
+  }
 });
 </script>
 </body>
