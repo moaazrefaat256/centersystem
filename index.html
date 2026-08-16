@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dr. Alaa Saber | نظام إدارة السنتر</title>
+<title>Center System | نظام إدارة السنتر</title>
 
 <!-- Temporary debug helper: shows any JS error directly on screen so it can be
      diagnosed on a phone without needing developer tools. Safe to remove later. -->
@@ -259,6 +259,17 @@
     background: var(--surface2);
   }
   #scanner-view { width: 100%; max-width: 400px; margin: 0 auto; border-radius: 12px; overflow: hidden; }
+  .scan-indicator {
+    display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 14px;
+    padding: 10px 16px; border-radius: 10px; background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.25);
+    color: var(--accent); font-size: 12.5px; font-weight: 700; text-align: center;
+  }
+  .scan-indicator .pulse-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex-shrink: 0;
+    animation: pulse-dot 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .action-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .scan-result-card {
     padding: 16px; border-radius: 12px; margin-top: 12px; border: 1px solid var(--border); display: flex; align-items: center; gap: 14px;
   }
@@ -387,7 +398,7 @@
 <div id="login-screen">
   <div class="login-box">
     <div class="logo-icon">🎓</div>
-    <h1>Dr. Alaa Saber</h1>
+    <h1>Center System</h1>
     <p>نظام إدارة السنتر التعليمي</p>
     <div class="spinner"></div>
     <p style="font-size:11px;color:var(--text3)">جارٍ الاتصال بقاعدة البيانات...</p>
@@ -400,7 +411,7 @@
     <div class="sidebar-logo">
       <div class="logo-icon">🎓</div>
       <div>
-        <h1>Dr. Alaa Saber</h1>
+        <h1>Center System</h1>
         <p>إدارة السنتر</p>
       </div>
     </div>
@@ -508,22 +519,31 @@
       <!-- STUDENTS -->
       <div class="page" id="page-students">
         <div class="card">
-          <div class="card-header">
-            <div class="search-wrap">
-              <input type="text" id="student-search" placeholder="بحث بالاسم، الكود، أو رقم الهاتف..." oninput="renderStudents()">
-              <span class="search-icon">🔍</span>
+          <div class="card-header" style="flex-direction:column;align-items:stretch;gap:12px;">
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between;">
+              <div class="search-wrap">
+                <input type="text" id="student-search" placeholder="بحث بالاسم، الكود، أو رقم الهاتف..." oninput="renderStudents()">
+                <span class="search-icon">🔍</span>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <select id="student-stage-filter" onchange="renderStudents()" style="width:auto;min-width:150px;">
+                  <option value="">كل المراحل</option>
+                </select>
+                <button class="btn btn-danger btn-sm" onclick="deleteAllStudents()">🗑️ حذف الكل</button>
+              </div>
             </div>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-              <select id="student-stage-filter" onchange="renderStudents()" style="width:auto;min-width:150px;">
-                <option value="">كل المراحل</option>
-              </select>
+            <div class="action-row">
               <input type="file" id="excel-import-input" accept=".xlsx,.xls" style="display:none;" onchange="importStudentsExcel(event)">
               <button class="btn btn-secondary btn-sm" onclick="document.getElementById('excel-import-input').click()">📤 استيراد Excel</button>
               <button class="btn btn-secondary btn-sm" onclick="exportStudentsExcel('filtered')">📥 تصدير حسب المرحلة</button>
               <button class="btn btn-secondary btn-sm" onclick="exportStudentsExcel('all')">📥 تصدير الكل</button>
+            </div>
+            <div class="action-row" style="justify-content:space-between;">
+              <div class="action-row">
+                <button class="btn btn-primary btn-sm" onclick="openStudentModal()">+ إضافة طالب</button>
+                <button class="btn btn-secondary btn-sm" onclick="openStudentScanModal()">📷 مسح كود لاستكمال البيانات</button>
+              </div>
               <button class="btn btn-secondary btn-sm" onclick="generatePreRegisteredId()">🎫 كود مسبق</button>
-              <button class="btn btn-secondary btn-sm" onclick="openStudentScanModal()">📷 مسح كود لاستكمال البيانات</button>
-              <button class="btn btn-primary btn-sm" onclick="openStudentModal()">+ إضافة طالب</button>
             </div>
           </div>
           <div class="table-wrap">
@@ -651,6 +671,10 @@
 
           <div class="two-col">
             <div>
+              <div class="scan-indicator">
+                <span class="pulse-dot"></span>
+                <span>🎯 جاري المسح لتسجيل الحضور في: <span id="attendance-scan-indicator-label"></span></span>
+              </div>
               <div class="scan-zone">
                 <div id="scanner-view"></div>
                 <div style="margin-top:12px;">
@@ -732,7 +756,7 @@
             </div>
           </div>
           <div class="form-group">
-            <input type="text" id="settings-center-name" placeholder="Dr. Alaa Saber">
+            <input type="text" id="settings-center-name" placeholder="Center System">
           </div>
           <button class="btn btn-primary btn-sm" style="margin-top:14px;" onclick="saveCenterName()">حفظ</button>
         </div>
@@ -758,6 +782,10 @@
     </p>
     <div class="two-col">
       <div>
+        <div class="scan-indicator">
+          <span class="pulse-dot"></span>
+          <span>🎯 جاري المسح لاستكمال بيانات طالب</span>
+        </div>
         <div class="scan-zone">
           <div id="student-scanner-view"></div>
           <div style="margin-top:12px;">
@@ -960,7 +988,7 @@ let state = {
   sessions: [],        // {id, teacherId, subject, date, time, group}
   attendance: [],       // {id, sessionId, studentId, timestamp}
   settings: {
-    centerName: 'Dr. Alaa Saber',
+    centerName: 'Center System',
     academicYear: '2026/2027',
     prefix: '27'
   }
@@ -1320,6 +1348,18 @@ function deleteStudent(id) {
   renderStudents();
   updateBadges();
   showToast('تم حذف الطالب', 'success');
+}
+
+function deleteAllStudents() {
+  if (!state.students.length) return showToast('لا يوجد طلاب لحذفهم', 'info');
+  if (!confirm(`هل أنت متأكد من حذف جميع الطلاب (${state.students.length})؟ سيتم حذف جميع حجوزاتهم وسجلات حضورهم أيضًا، ولا يمكن التراجع عن هذا الإجراء.`)) return;
+  state.students = [];
+  state.bookings = [];
+  state.attendance = [];
+  saveState();
+  renderStudents();
+  updateBadges();
+  showToast('تم حذف جميع الطلاب', 'success');
 }
 
 function renderStudents() {
@@ -2049,6 +2089,8 @@ function showAttendanceScanUI() {
   document.getElementById('attendance-list-card').style.display = 'block';
   document.getElementById('attendance-selected-session-label').textContent =
     `${t?.name||'—'} — ${s.subject}${stage ? ' · '+stage.name : ''} · ${s.date} ${s.time}${s.group ? ' · '+s.group : ''}`;
+  const indicatorLabel = document.getElementById('attendance-scan-indicator-label');
+  if (indicatorLabel) indicatorLabel.textContent = `${t?.name||'—'} — ${s.subject}${stage ? ' · '+stage.name : ''}`;
   document.getElementById('scan-result-area').innerHTML = '';
   document.getElementById('manual-code-input').value = '';
   renderAttendanceList();
@@ -2167,6 +2209,26 @@ function stopScannerIfRunning() {
 //  diagnostics for the common failure causes (insecure origin, no camera,
 //  permission denied, camera busy) instead of a single generic error.
 // ============================================================
+// Short synthesized beep played whenever a barcode/QR code is successfully decoded.
+let beepAudioCtx = null;
+function playBeep() {
+  try {
+    if (!beepAudioCtx) beepAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (beepAudioCtx.state === 'suspended') beepAudioCtx.resume();
+    const osc = beepAudioCtx.createOscillator();
+    const gain = beepAudioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 1500;
+    gain.gain.setValueAtTime(0.0001, beepAudioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.35, beepAudioCtx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, beepAudioCtx.currentTime + 0.18);
+    osc.connect(gain);
+    gain.connect(beepAudioCtx.destination);
+    osc.start();
+    osc.stop(beepAudioCtx.currentTime + 0.2);
+  } catch (e) {}
+}
+
 async function startBarcodeScanner({ viewId, btnId, onDecode, setInstance, getInstance, setRunning, getRunning }) {
   const btn = document.getElementById(btnId);
 
@@ -2198,7 +2260,7 @@ async function startBarcodeScanner({ viewId, btnId, onDecode, setInstance, getIn
   setInstance(instance);
 
   const scanConfig = { fps: 10, qrbox: { width: 280, height: 140 } };
-  const onSuccess = (decodedText) => onDecode(decodedText.trim());
+  const onSuccess = (decodedText) => { playBeep(); onDecode(decodedText.trim()); };
   const onScanError = () => {};
 
   // Build an ordered list of camera choices, most specific (real rear camera by id) to most generic.
