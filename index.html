@@ -5,6 +5,31 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dr. Alaa Saber | نظام إدارة السنتر</title>
 
+<!-- Temporary debug helper: shows any JS error directly on screen so it can be
+     diagnosed on a phone without needing developer tools. Safe to remove later. -->
+<script>
+(function(){
+  function showErr(msg){
+    try{
+      var box = document.getElementById('js-debug-error');
+      if(!box){
+        box = document.createElement('div');
+        box.id = 'js-debug-error';
+        box.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;background:#7f1d1d;color:#fff;padding:10px 14px;font-family:sans-serif;font-size:12px;direction:rtl;white-space:pre-wrap;max-height:40vh;overflow:auto;box-shadow:0 4px 12px rgba(0,0,0,.5)';
+        document.documentElement.appendChild(box);
+      }
+      box.textContent += (box.textContent ? '\n---\n' : '') + msg;
+    }catch(e){}
+  }
+  window.addEventListener('error', function(e){
+    showErr('خطأ JS: ' + e.message + '\nملف: ' + (e.filename||'') + ' سطر: ' + e.lineno + ':' + e.colno);
+  });
+  window.addEventListener('unhandledrejection', function(e){
+    showErr('خطأ Promise: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
+  });
+})();
+</script>
+
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
@@ -944,14 +969,14 @@ let db = null;
 let dataRef = null;
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDCAULGMX47_iexdrWG2DBQ4Wkoi5JkF5g",
-  authDomain: "dralaasaber-bc0ec.firebaseapp.com",
-  databaseURL: "https://dralaasaber-bc0ec-default-rtdb.firebaseio.com",
-  projectId: "dralaasaber-bc0ec",
-  storageBucket: "dralaasaber-bc0ec.firebasestorage.app",
-  messagingSenderId: "861615997334",
-  appId: "1:861615997334:web:77a788c3f1146b5a589db7",
-  measurementId: "G-42Q1T3T36N"
+  apiKey: "AIzaSyDbg6EJGNuAmHGJBiWRhEbPoUE1MGUUp98",
+  authDomain: "alaa-5671b.firebaseapp.com",
+  databaseURL: "https://alaa-5671b-default-rtdb.firebaseio.com",
+  projectId: "alaa-5671b",
+  storageBucket: "alaa-5671b.firebasestorage.app",
+  messagingSenderId: "848178032958",
+  appId: "1:848178032958:web:21d32f5b9ac8946d007c6f",
+  measurementId: "G-8KENZV9VCQ"
 };
 
 function showSyncStatus(status) {
