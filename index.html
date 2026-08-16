@@ -277,6 +277,9 @@
     text-align: center; padding: 26px 18px; border-radius: 14px; margin-top: 4px;
     background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.3);
   }
+  .scan-confirm-card.already-registered {
+    background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.35);
+  }
   .scan-confirm-card .scan-confirm-icon { font-size: 40px; margin-bottom: 10px; }
   .scan-confirm-card .scan-confirm-text { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
   .scan-confirm-card .scan-confirm-sub { font-size: 12px; color: var(--text3); }
@@ -829,11 +832,11 @@
       </div>
     </div>
     <div class="scan-confirm-card" id="student-scan-confirm" style="display:none;">
-      <div class="scan-confirm-icon">✅</div>
+      <div class="scan-confirm-icon" id="student-scan-confirm-icon">✅</div>
       <div class="scan-confirm-text">تم عمل سكان للكود: <span id="student-scan-confirm-code" style="color:var(--accent);font-family:monospace;"></span></div>
       <div class="scan-confirm-sub" id="student-scan-confirm-sub"></div>
       <div style="display:flex;gap:10px;margin-top:18px;">
-        <button class="btn btn-primary btn-sm" style="flex:1;" onclick="confirmStudentScan()">✅ استكمال البيانات</button>
+        <button class="btn btn-primary btn-sm" style="flex:1;" id="student-scan-confirm-btn" onclick="confirmStudentScan()">✅ استكمال البيانات</button>
         <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="cancelStudentScan()">✖️ إلغاء</button>
       </div>
     </div>
@@ -1692,16 +1695,36 @@ function handleStudentManualScan() {
 
 // A scanned/entered code shows a confirmation card first (with a beep already played on camera
 // decode) instead of jumping straight into the student form, so mis-scans can be cancelled.
+// If the code already belongs to a student with complete data, the card warns with their name
+// instead of silently offering to "complete" data that's already there.
 function processStudentScanCode(code) {
   pendingStudentScanCode = code;
   stopStudentScannerIfRunning();
   const student = getStudent(code);
+  const card = document.getElementById('student-scan-confirm');
+  const icon = document.getElementById('student-scan-confirm-icon');
+  const btn = document.getElementById('student-scan-confirm-btn');
+  const alreadyComplete = !!(student && student.name);
+
   document.getElementById('student-scan-confirm-code').textContent = code;
-  document.getElementById('student-scan-confirm-sub').textContent = student
-    ? (student.name ? 'كود طالب موجود — هيتم فتح بياناته للتعديل' : 'كود مسبق التسجيل — هيتم فتح شاشة استكمال بياناته')
-    : 'كود جديد — هيتم فتح شاشة إضافة طالب بنفس الكود';
+  card.classList.toggle('already-registered', alreadyComplete);
+
+  if (alreadyComplete) {
+    icon.textContent = '⚠️';
+    document.getElementById('student-scan-confirm-sub').textContent = `هذا الكود مسجل بالفعل باسم: ${student.name}`;
+    btn.textContent = '👁️ عرض / تعديل البيانات';
+  } else if (student) {
+    icon.textContent = '✅';
+    document.getElementById('student-scan-confirm-sub').textContent = 'كود مسبق التسجيل — هيتم فتح شاشة استكمال بياناته';
+    btn.textContent = '✅ استكمال البيانات';
+  } else {
+    icon.textContent = '✅';
+    document.getElementById('student-scan-confirm-sub').textContent = 'كود جديد — هيتم فتح شاشة إضافة طالب بنفس الكود';
+    btn.textContent = '✅ استكمال البيانات';
+  }
+
   document.getElementById('student-scan-body').style.display = 'none';
-  document.getElementById('student-scan-confirm').style.display = 'block';
+  card.style.display = 'block';
 }
 
 function confirmStudentScan() {
