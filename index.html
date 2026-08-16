@@ -304,6 +304,9 @@
       overflow-y: auto; -webkit-overflow-scrolling: touch;
     }
     .sidebar.open { right: 0; }
+    /* Block any tap from reaching the content behind the sidebar while it's open/closing,
+       so a fast tap on a nav item can never register on a button underneath it. */
+    .sidebar.open ~ .main { pointer-events: none; }
     .main { width: 100%; min-width: 0; }
     .stats-grid { grid-template-columns: 1fr 1fr; }
     .form-grid, .two-col, .three-col { grid-template-columns: 1fr; }
@@ -404,37 +407,37 @@
     </div>
 
     <div class="nav-section">الرئيسية</div>
-    <div class="nav-item active" data-page="dashboard" onclick="goPage('dashboard')">
+    <div class="nav-item active" data-page="dashboard" onclick="goPage('dashboard', event)">
       <span class="icon">📊</span><span>لوحة التحكم</span>
     </div>
 
     <div class="nav-section">الإدارة الأساسية</div>
-    <div class="nav-item" data-page="students" onclick="goPage('students')">
+    <div class="nav-item" data-page="students" onclick="goPage('students', event)">
       <span class="icon">🎒</span><span>الطلاب</span><span class="nav-badge" id="badge-students">0</span>
     </div>
-    <div class="nav-item" data-page="stages" onclick="goPage('stages')">
+    <div class="nav-item" data-page="stages" onclick="goPage('stages', event)">
       <span class="icon">🏫</span><span>المراحل الدراسية</span>
     </div>
-    <div class="nav-item" data-page="teachers" onclick="goPage('teachers')">
+    <div class="nav-item" data-page="teachers" onclick="goPage('teachers', event)">
       <span class="icon">👨‍🏫</span><span>المدرسين</span><span class="nav-badge" id="badge-teachers">0</span>
     </div>
 
     <div class="nav-section">الحصص والحضور</div>
-    <div class="nav-item" data-page="bookings" onclick="goPage('bookings')">
+    <div class="nav-item" data-page="bookings" onclick="goPage('bookings', event)">
       <span class="icon">🔗</span><span>الحجوزات</span>
     </div>
-    <div class="nav-item" data-page="sessions" onclick="goPage('sessions')">
+    <div class="nav-item" data-page="sessions" onclick="goPage('sessions', event)">
       <span class="icon">🗓️</span><span>الحصص</span>
     </div>
-    <div class="nav-item" data-page="attendance" onclick="goPage('attendance')">
+    <div class="nav-item" data-page="attendance" onclick="goPage('attendance', event)">
       <span class="icon">📷</span><span>تسجيل الحضور</span>
     </div>
-    <div class="nav-item" data-page="counter" onclick="goPage('counter')">
+    <div class="nav-item" data-page="counter" onclick="goPage('counter', event)">
       <span class="icon">🔢</span><span>عداد الحضور</span>
     </div>
 
     <div class="nav-section">النظام</div>
-    <div class="nav-item" data-page="settings" onclick="goPage('settings')">
+    <div class="nav-item" data-page="settings" onclick="goPage('settings', event)">
       <span class="icon">⚙️</span><span>الإعدادات</span>
     </div>
 
@@ -1111,7 +1114,8 @@ const PAGE_TITLES = {
   settings: ['الإعدادات', 'إعدادات العام الدراسي والسنتر']
 };
 
-function goPage(pageId) {
+function goPage(pageId, ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + pageId).classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
