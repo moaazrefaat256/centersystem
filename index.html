@@ -434,6 +434,7 @@
               <button class="btn btn-secondary btn-sm" onclick="exportStudentsExcel('filtered')">📥 تصدير حسب المرحلة</button>
               <button class="btn btn-secondary btn-sm" onclick="exportStudentsExcel('all')">📥 تصدير الكل</button>
               <button class="btn btn-secondary btn-sm" onclick="generatePreRegisteredId()">🎫 كود مسبق</button>
+              <button class="btn btn-secondary btn-sm" onclick="openStudentScanModal()">📷 مسح كود لاستكمال البيانات</button>
               <button class="btn btn-primary btn-sm" onclick="openStudentModal()">+ إضافة طالب</button>
             </div>
           </div>
@@ -656,6 +657,36 @@
 <div class="toast-container" id="toast-container"></div>
 
 <!-- ==================== MODALS ==================== -->
+
+<!-- Student Scan Modal (scan a printed code to complete/add its student data, no manual search) -->
+<div class="modal-overlay" id="modal-student-scan">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">📷 مسح كود لاستكمال البيانات</div>
+      <button class="close-btn" onclick="closeStudentScanModal()">✕</button>
+    </div>
+    <p style="font-size:12px;color:var(--text3);margin-bottom:14px;">
+      امسح كود الطالب المطبوع مسبقًا — لو الكود موجود هيفتحلك شاشة استكمال بياناته، ولو جديد هيفتحلك شاشة إضافة طالب بنفس الكود.
+    </p>
+    <div class="two-col">
+      <div>
+        <div class="scan-zone">
+          <div id="student-scanner-view"></div>
+          <div style="margin-top:12px;">
+            <button class="btn btn-primary btn-sm" id="student-scanner-toggle-btn" onclick="toggleStudentScanner()">📷 تشغيل الكاميرا</button>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="form-group">
+          <label>أو أدخل الكود يدويًا</label>
+          <input type="text" id="student-manual-code-input" placeholder="مثال: 270001" onkeydown="if(event.key==='Enter')handleStudentManualScan()">
+        </div>
+        <button class="btn btn-primary btn-sm" style="margin-top:10px;" onclick="handleStudentManualScan()">بحث</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Student Modal -->
 <div class="modal-overlay" id="modal-student">
@@ -1141,7 +1172,7 @@ function populateStageDropdowns() {
   }
 }
 
-function openStudentModal(studentId=null) {
+function openStudentModal(studentId=null, prefillCode=null) {
   populateStageDropdowns();
   document.getElementById('s-original-id').value = studentId || '';
   if (studentId) {
@@ -1155,7 +1186,7 @@ function openStudentModal(studentId=null) {
     document.getElementById('s-stage').value = st.stageId || '';
   } else {
     document.getElementById('student-modal-title').textContent = 'إضافة طالب جديد';
-    document.getElementById('s-code').value = generateStudentId();
+    document.getElementById('s-code').value = prefillCode || generateStudentId();
     document.getElementById('s-name').value = '';
     document.getElementById('s-phone').value = '';
     document.getElementById('s-father-phone').value = '';
@@ -1404,16 +1435,141 @@ function importStudentsExcel(event) {
   reader.readAsArrayBuffer(file);
 }
 
-// Generate an empty code first (no name/phone yet) so it can be printed/saved,
-// with the student's data completed later on the same code.
+// Ask how many codes are needed first, then generate that many empty (pre-registered) codes at once.
 function generatePreRegisteredId() {
-  const code = generateStudentId();
-  state.students.push({ id: code, name: '', phone: '', fatherPhone: '', motherPhone: '', stageId: '', createdAt: Date.now() });
+  const input = prompt('كام كود مسبق التسجيل عايز تولّد؟', '1');
+  if (input === null) return; // cancelled
+
+  const qty = parseInt(input, 10);
+  if (!qty || qty < 1) return showToast('أدخل عددًا صحيحًا أكبر من صفر', 'error');
+  if (qty > 200) return showToast('الحد الأقصى 200 كود في المرة الواحدة', 'error');
+
+  const codes = [];
+  for (let i = 0; i < qty; i++) {
+    const code = generateStudentId();
+    state.students.push({ id: code, name: '', phone: '', fatherPhone: '', motherPhone: '', stageId: '', createdAt: Date.now() });
+    codes.push(code);
+  }
   saveState();
   renderStudents();
   updateBadges();
-  showToast('تم توليد كود جديد: ' + code, 'success');
-  viewStudentDetail(code);
+  showToast(`تم توليد ${qty} كود مسبق التسجيل بنجاح`, 'success');
+
+  if (qty === 1) {
+    viewStudentDetail(codes[0]);
+  } else {
+    printPreRegisteredBatch(codes);
+  }
+}
+
+// Renders all requested codes as barcodes off-screen, then opens one print window with all of them.
+function printPreRegisteredBatch(codes) {
+  const container = document.createElement('div');
+  container.style.display = 'none';
+  document.body.appendChild(container);
+
+  const items = codes.map(code => {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    container.appendChild(svg);
+    try {
+      JsBarcode(svg, code, { format: "CODE128", displayValue: true, fontSize: 14, height: 60, margin: 10 });
+    } catch(e) { console.error(e); }
+    return new XMLSerializer().serializeToString(svg);
+  });
+
+  document.body.removeChild(container);
+
+  const win = window.open('', '_blank');
+  win.document.write(`
+    <html dir="rtl"><head><title>أكواد مسبقة التسجيل</title>
+    <style>
+      body{font-family:sans-serif;padding:30px;}
+      h2{text-align:center;margin-bottom:24px;}
+      .code-block{page-break-inside:avoid;border:1px dashed #999;border-radius:8px;padding:16px;margin-bottom:16px;text-align:center;}
+    </style>
+    </head><body>
+    <h2>أكواد مسبقة التسجيل (${codes.length})</h2>
+    ${items.map(svgData => `<div class="code-block">${svgData}</div>`).join('')}
+    <script>window.onload=()=>{window.print();}<\/script>
+    </body></html>
+  `);
+  win.document.close();
+}
+
+let studentHtml5QrCode = null;
+let studentScannerRunning = false;
+
+function openStudentScanModal() {
+  document.getElementById('student-manual-code-input').value = '';
+  openModal('modal-student-scan');
+}
+
+function closeStudentScanModal() {
+  stopStudentScannerIfRunning();
+  closeModal('modal-student-scan');
+}
+
+function handleStudentManualScan() {
+  const input = document.getElementById('student-manual-code-input');
+  const code = input.value.trim();
+  if (!code) return;
+  processStudentScanCode(code);
+}
+
+// A scanned code either belongs to an existing (possibly pre-registered/incomplete) student —
+// open their edit form directly — or it's brand new, so open "add student" prefilled with that code.
+function processStudentScanCode(code) {
+  const student = getStudent(code);
+  closeStudentScanModal();
+  if (student) {
+    openStudentModal(code);
+    showToast(student.name ? 'تم فتح بيانات الطالب' : 'كود مسبق التسجيل — استكمل بياناته', 'success');
+  } else {
+    openStudentModal(null, code);
+    showToast('كود جديد — أدخل بيانات الطالب', 'info');
+  }
+}
+
+function toggleStudentScanner() {
+  if (studentScannerRunning) { stopStudentScannerIfRunning(); return; }
+  startStudentScanner();
+}
+
+function startStudentScanner() {
+  const btn = document.getElementById('student-scanner-toggle-btn');
+  studentHtml5QrCode = new Html5Qrcode("student-scanner-view", {
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.QR_CODE
+    ],
+    verbose: false
+  });
+  studentHtml5QrCode.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: { width: 280, height: 140 } },
+    (decodedText) => {
+      processStudentScanCode(decodedText.trim());
+    },
+    () => {}
+  ).then(() => {
+    studentScannerRunning = true;
+    btn.textContent = '⏹️ إيقاف الكاميرا';
+  }).catch(err => {
+    showToast('تعذر تشغيل الكاميرا. تأكد من السماح بالوصول للكاميرا أو استخدم الإدخال اليدوي.', 'error');
+  });
+}
+
+function stopStudentScannerIfRunning() {
+  if (studentHtml5QrCode && studentScannerRunning) {
+    studentHtml5QrCode.stop().then(() => {
+      studentHtml5QrCode.clear();
+      studentScannerRunning = false;
+      const btn = document.getElementById('student-scanner-toggle-btn');
+      if (btn) btn.textContent = '📷 تشغيل الكاميرا';
+    }).catch(() => {});
+  }
 }
 
 // ============================================================
