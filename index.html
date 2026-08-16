@@ -259,6 +259,27 @@
     background: var(--surface2);
   }
   #scanner-view { width: 100%; max-width: 400px; margin: 0 auto; border-radius: 12px; overflow: hidden; }
+  .scanner-frame { position: relative; width: 100%; max-width: 400px; margin: 0 auto; }
+  .scanner-frame #scanner-view, .scanner-frame #student-scanner-view { max-width: 100%; margin: 0; }
+  .scanner-frame .scan-laser {
+    position: absolute; left: 5%; right: 5%; height: 3px; top: 8%;
+    background: linear-gradient(90deg, transparent, #ff2d2d 15%, #ff2d2d 85%, transparent);
+    box-shadow: 0 0 8px 2px rgba(255,45,45,0.85), 0 0 24px 6px rgba(255,45,45,0.45);
+    border-radius: 3px; pointer-events: none; z-index: 5; display: none;
+  }
+  .scanner-frame.scanning .scan-laser { display: block; animation: laser-scan 1.7s ease-in-out infinite; }
+  @keyframes laser-scan {
+    0% { top: 8%; opacity: 0.9; }
+    50% { top: 88%; opacity: 1; }
+    100% { top: 8%; opacity: 0.9; }
+  }
+  .scan-confirm-card {
+    text-align: center; padding: 26px 18px; border-radius: 14px; margin-top: 4px;
+    background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.3);
+  }
+  .scan-confirm-card .scan-confirm-icon { font-size: 40px; margin-bottom: 10px; }
+  .scan-confirm-card .scan-confirm-text { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .scan-confirm-card .scan-confirm-sub { font-size: 12px; color: var(--text3); }
   .scan-indicator {
     display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 14px;
     padding: 10px 16px; border-radius: 10px; background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.25);
@@ -676,7 +697,10 @@
                 <span>🎯 جاري المسح لتسجيل الحضور في: <span id="attendance-scan-indicator-label"></span></span>
               </div>
               <div class="scan-zone">
-                <div id="scanner-view"></div>
+                <div class="scanner-frame" id="scanner-frame">
+                  <div id="scanner-view"></div>
+                  <div class="scan-laser"></div>
+                </div>
                 <div style="margin-top:12px;">
                   <button class="btn btn-primary btn-sm" id="scanner-toggle-btn" onclick="toggleScanner()">📷 تشغيل الكاميرا</button>
                 </div>
@@ -780,14 +804,17 @@
     <p style="font-size:12px;color:var(--text3);margin-bottom:14px;">
       امسح كود الطالب المطبوع مسبقًا — لو الكود موجود هيفتحلك شاشة استكمال بياناته، ولو جديد هيفتحلك شاشة إضافة طالب بنفس الكود.
     </p>
-    <div class="two-col">
+    <div class="two-col" id="student-scan-body">
       <div>
         <div class="scan-indicator">
           <span class="pulse-dot"></span>
           <span>🎯 جاري المسح لاستكمال بيانات طالب</span>
         </div>
         <div class="scan-zone">
-          <div id="student-scanner-view"></div>
+          <div class="scanner-frame" id="student-scanner-frame">
+            <div id="student-scanner-view"></div>
+            <div class="scan-laser"></div>
+          </div>
           <div style="margin-top:12px;">
             <button class="btn btn-primary btn-sm" id="student-scanner-toggle-btn" onclick="toggleStudentScanner()">📷 تشغيل الكاميرا</button>
           </div>
@@ -799,6 +826,15 @@
           <input type="text" id="student-manual-code-input" placeholder="مثال: 270001" onkeydown="if(event.key==='Enter')handleStudentManualScan()">
         </div>
         <button class="btn btn-primary btn-sm" style="margin-top:10px;" onclick="handleStudentManualScan()">بحث</button>
+      </div>
+    </div>
+    <div class="scan-confirm-card" id="student-scan-confirm" style="display:none;">
+      <div class="scan-confirm-icon">✅</div>
+      <div class="scan-confirm-text">تم عمل سكان للكود: <span id="student-scan-confirm-code" style="color:var(--accent);font-family:monospace;"></span></div>
+      <div class="scan-confirm-sub" id="student-scan-confirm-sub"></div>
+      <div style="display:flex;gap:10px;margin-top:18px;">
+        <button class="btn btn-primary btn-sm" style="flex:1;" onclick="confirmStudentScan()">✅ استكمال البيانات</button>
+        <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="cancelStudentScan()">✖️ إلغاء</button>
       </div>
     </div>
   </div>
@@ -1627,15 +1663,24 @@ function printPreRegisteredBatch(codes) {
 
 let studentHtml5QrCode = null;
 let studentScannerRunning = false;
+let pendingStudentScanCode = null;
 
 function openStudentScanModal() {
   document.getElementById('student-manual-code-input').value = '';
+  resetStudentScanConfirm();
   openModal('modal-student-scan');
 }
 
 function closeStudentScanModal() {
   stopStudentScannerIfRunning();
+  resetStudentScanConfirm();
   closeModal('modal-student-scan');
+}
+
+function resetStudentScanConfirm() {
+  pendingStudentScanCode = null;
+  document.getElementById('student-scan-confirm').style.display = 'none';
+  document.getElementById('student-scan-body').style.display = '';
 }
 
 function handleStudentManualScan() {
@@ -1645,9 +1690,23 @@ function handleStudentManualScan() {
   processStudentScanCode(code);
 }
 
-// A scanned code either belongs to an existing (possibly pre-registered/incomplete) student —
-// open their edit form directly — or it's brand new, so open "add student" prefilled with that code.
+// A scanned/entered code shows a confirmation card first (with a beep already played on camera
+// decode) instead of jumping straight into the student form, so mis-scans can be cancelled.
 function processStudentScanCode(code) {
+  pendingStudentScanCode = code;
+  stopStudentScannerIfRunning();
+  const student = getStudent(code);
+  document.getElementById('student-scan-confirm-code').textContent = code;
+  document.getElementById('student-scan-confirm-sub').textContent = student
+    ? (student.name ? 'كود طالب موجود — هيتم فتح بياناته للتعديل' : 'كود مسبق التسجيل — هيتم فتح شاشة استكمال بياناته')
+    : 'كود جديد — هيتم فتح شاشة إضافة طالب بنفس الكود';
+  document.getElementById('student-scan-body').style.display = 'none';
+  document.getElementById('student-scan-confirm').style.display = 'block';
+}
+
+function confirmStudentScan() {
+  const code = pendingStudentScanCode;
+  if (!code) return;
   const student = getStudent(code);
   closeStudentScanModal();
   if (student) {
@@ -1657,6 +1716,10 @@ function processStudentScanCode(code) {
     openStudentModal(null, code);
     showToast('كود جديد — أدخل بيانات الطالب', 'info');
   }
+}
+
+function cancelStudentScan() {
+  resetStudentScanConfirm();
 }
 
 function toggleStudentScanner() {
@@ -1681,7 +1744,8 @@ function stopStudentScannerIfRunning() {
     getInstance: () => studentHtml5QrCode,
     getRunning: () => studentScannerRunning,
     setRunning: (v) => { studentScannerRunning = v; },
-    btnId: 'student-scanner-toggle-btn'
+    btnId: 'student-scanner-toggle-btn',
+    viewId: 'student-scanner-view'
   });
 }
 
@@ -2198,7 +2262,8 @@ function stopScannerIfRunning() {
     getInstance: () => html5QrCode,
     getRunning: () => scannerRunning,
     setRunning: (v) => { scannerRunning = v; },
-    btnId: 'scanner-toggle-btn'
+    btnId: 'scanner-toggle-btn',
+    viewId: 'scanner-view'
   });
 }
 
@@ -2227,6 +2292,14 @@ function playBeep() {
     osc.start();
     osc.stop(beepAudioCtx.currentTime + 0.2);
   } catch (e) {}
+}
+
+// Toggles the ".scanning" class on the scanner's wrapping .scanner-frame element,
+// which switches on/off the animated red laser line so it only shows while the camera is live.
+function setScannerFrameActive(viewId, active) {
+  const el = document.getElementById(viewId);
+  const frame = el && el.closest('.scanner-frame');
+  if (frame) frame.classList.toggle('scanning', active);
 }
 
 async function startBarcodeScanner({ viewId, btnId, onDecode, setInstance, getInstance, setRunning, getRunning }) {
@@ -2287,6 +2360,7 @@ async function startBarcodeScanner({ viewId, btnId, onDecode, setInstance, getIn
     try {
       await instance.start(choice, scanConfig, onSuccess, onScanError);
       setRunning(true);
+      setScannerFrameActive(viewId, true);
       if (btn) btn.textContent = '⏹️ إيقاف الكاميرا';
       return;
     } catch (err) {
@@ -2295,6 +2369,7 @@ async function startBarcodeScanner({ viewId, btnId, onDecode, setInstance, getIn
   }
 
   setRunning(false);
+  setScannerFrameActive(viewId, false);
   const msg = String(lastError && (lastError.message || lastError)) || '';
   let hint = 'تعذر تشغيل الكاميرا على هذا الجهاز. استخدم الإدخال اليدوي.';
   if (/NotAllowedError|Permission/i.test(msg)) hint = 'تم رفض إذن الكاميرا. افتح إعدادات المتصفح واسمح بالوصول للكاميرا لهذا الموقع، ثم أعد المحاولة.';
@@ -2303,12 +2378,13 @@ async function startBarcodeScanner({ viewId, btnId, onDecode, setInstance, getIn
   showToast(hint, 'error');
 }
 
-function stopBarcodeScanner({ getInstance, getRunning, setRunning, btnId }) {
+function stopBarcodeScanner({ getInstance, getRunning, setRunning, btnId, viewId }) {
   const instance = getInstance();
   if (instance && getRunning()) {
     instance.stop().then(() => {
       instance.clear();
       setRunning(false);
+      if (viewId) setScannerFrameActive(viewId, false);
       const btn = document.getElementById(btnId);
       if (btn) btn.textContent = '📷 تشغيل الكاميرا';
     }).catch(() => {});
